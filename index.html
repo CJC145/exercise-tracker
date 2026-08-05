@@ -11,7 +11,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js"></script>
 <style>
   :root{
     --ink:#1B2320;
@@ -104,8 +104,8 @@
   }
   .field input:focus, .field textarea:focus, .field select:focus{border-color:var(--amber);}
   .dist-row{display:flex; gap:8px;}
-  .dist-row input{flex:1;}
-  .unit-toggle{display:flex; border:1px solid var(--line); border-radius:8px; overflow:hidden;}
+  .dist-row input{flex:1; min-width:0;}
+  .unit-toggle{display:flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; flex:0 0 auto;}
   .unit-toggle button{
     background:var(--surface2); color:var(--iron); border:none; padding:0 12px;
     font-family:'IBM Plex Mono',monospace; font-size:12px; cursor:pointer;
@@ -121,6 +121,13 @@
   .btn-primary:active{transform:scale(0.99);}
 
   /* ---- Progress card ---- */
+  .subrow-label{font-size:9.5px; letter-spacing:0.1em; text-transform:uppercase; color:var(--iron); margin:2px 0 6px;}
+  .chip-sub{
+    flex:0 0 auto; padding:6px 10px; border-radius:7px; border:1px solid var(--line);
+    background:transparent; color:var(--iron); font-family:'IBM Plex Mono',monospace;
+    font-size:11.5px; cursor:pointer;
+  }
+  .chip-sub.active{background:var(--amber); color:var(--ink); border-color:transparent; font-weight:600;}
   .progress-stats{display:flex; gap:8px; margin:14px 0 16px;}
   .pstat{
     flex:1; background:var(--surface2); border:1px solid var(--line);
@@ -242,6 +249,7 @@
   <section class="card">
     <h2>Progress</h2>
     <div class="chip-row" id="progressChips"></div>
+    <div id="distanceFilterWrap"></div>
     <div id="progressBody"></div>
   </section>
 
@@ -274,6 +282,7 @@ let selectedType = 'run';
 let selectedUnit = 'mi';
 let storageOK = true;
 let selectedProgressType = 'run';
+let selectedDistanceFilter = 'all';
 let progressChart = null;
 
 const $ = id => document.getElementById(id);
@@ -314,7 +323,7 @@ function renderProgressChips(){
     b.className = 'chip' + (t.key===selectedProgressType ? ' active' : '');
     b.textContent = t.code;
     if(t.key===selectedProgressType){ b.style.background = t.color; }
-    b.onclick = ()=>{ selectedProgressType = t.key; renderProgress(); };
+    b.onclick = ()=>{ selectedProgressType = t.key; selectedDistanceFilter = 'all'; renderProgress(); };
     row.appendChild(b);
   });
 }
@@ -322,15 +331,60 @@ function renderProgressChips(){
 function renderProgress(){
   renderProgressChips();
   const body = $('progressBody');
+  const filterWrap = $('distanceFilterWrap');
   const t = typeMap[selectedProgressType];
-  const list = entries
+  const byType = entries
     .filter(e=>e.type===selectedProgressType)
     .sort((a,b)=> a.date.localeCompare(b.date) || a.createdAt - b.createdAt);
 
   if(progressChart){ progressChart.destroy(); progressChart = null; }
 
-  if(list.length===0){
+  if(byType.length===0){
+    filterWrap.innerHTML = '';
     body.innerHTML = `<div class="progress-empty">No ${t.label.toLowerCase()} sessions logged yet.</div>`;
+    return;
+  }
+
+  // Build the set of distinct logged distances for this type (e.g. lets you isolate "all my 5Ks")
+  const distMap = new Map();
+  byType.forEach(e=>{
+    if(e.distance){
+      const key = e.unit + ':' + Number(e.distance).toFixed(1);
+      if(!distMap.has(key)) distMap.set(key, {unit:e.unit, value:Number(e.distance).toFixed(1)});
+    }
+  });
+  const distOptions = [...distMap.entries()].sort((a,b)=> Number(a[1].value)-Number(b[1].value));
+
+  if(distOptions.length > 0){
+    filterWrap.innerHTML = `
+      <div class="subrow-label">Filter by distance</div>
+      <div class="chip-row" id="distChips" style="margin-bottom:12px;"></div>
+    `;
+    const dRow = $('distChips');
+    const allBtn = document.createElement('button');
+    allBtn.type='button';
+    allBtn.className = 'chip-sub' + (selectedDistanceFilter==='all' ? ' active':'');
+    allBtn.textContent = 'ALL';
+    allBtn.onclick = ()=>{ selectedDistanceFilter='all'; renderProgress(); };
+    dRow.appendChild(allBtn);
+    distOptions.forEach(([key,d])=>{
+      const b = document.createElement('button');
+      b.type='button';
+      b.className = 'chip-sub' + (selectedDistanceFilter===key ? ' active':'');
+      b.textContent = `${d.value} ${d.unit}`;
+      b.onclick = ()=>{ selectedDistanceFilter=key; renderProgress(); };
+      dRow.appendChild(b);
+    });
+  } else {
+    filterWrap.innerHTML = '';
+  }
+
+  const list = selectedDistanceFilter==='all'
+    ? byType
+    : byType.filter(e=> e.distance && (e.unit+':'+Number(e.distance).toFixed(1))===selectedDistanceFilter);
+
+  if(list.length===0){
+    body.innerHTML = `<div class="progress-empty">No sessions match this filter.</div>`;
     return;
   }
 
