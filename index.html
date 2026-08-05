@@ -336,7 +336,8 @@
       </div>
       <div class="field">
         <label for="fDuration">Duration (min)</label>
-        <input type="number" id="fDuration" min="0" placeholder="45">
+        <input type="text" id="fDuration" placeholder="45 or 7:30">
+        <div class="subrow-label" style="margin:4px 0 0;">Minutes, or mm:ss (e.g. 7:30)</div>
       </div>
     </div>
     <div class="field" id="standardDistanceField" style="margin-bottom:10px;">
@@ -603,6 +604,22 @@ document.querySelectorAll('.collapsible-head').forEach(head=>{
   head.addEventListener('click', ()=> toggleSection(head.closest('.collapsible').dataset.section));
 });
 
+function parseDuration(str){
+  if(str===null || str===undefined) return null;
+  str = String(str).trim();
+  if(str==='') return null;
+  if(str.includes(':')){
+    const parts = str.split(':');
+    if(parts.length !== 2) return null;
+    const mm = Number(parts[0]);
+    const ss = Number(parts[1]);
+    if(isNaN(mm) || isNaN(ss)) return null;
+    return mm + ss/60;
+  }
+  const n = Number(str);
+  return isNaN(n) ? null : n;
+}
+
 function formatDateDisplay(dateStr){
   if(!dateStr) return '';
   const d = new Date(dateStr+'T00:00:00');
@@ -649,7 +666,9 @@ const STROKES = [
   {key:'free',   label:'Freestyle',    code:'FR'},
   {key:'back',   label:'Backstroke',   code:'BK'},
   {key:'breast', label:'Breaststroke', code:'BR'},
+  {key:'side',   label:'Sidestroke',   code:'SIDE'},
   {key:'fly',    label:'Butterfly',    code:'FLY'},
+  {key:'side',   label:'Sidestroke',   code:'SIDE'},
   {key:'im',     label:'IM / Mixed',   code:'IM'},
   {key:'other',  label:'Other',        code:'OTHR'}
 ];
@@ -1265,10 +1284,11 @@ function render(){
 }
 
 function addEntry(){
-  const duration = $('fDuration').value;
+  const durationInput = $('fDuration').value;
+  const duration = parseDuration(durationInput);
   const date = $('fDate').value || todayStr();
-  if(!duration || Number(duration) <= 0){
-    toast('Add a duration first');
+  if(!duration || duration <= 0){
+    toast('Add a valid duration (e.g. 45 or 7:30)');
     return;
   }
   const distance = $('fDistance').value ? Number($('fDistance').value) : null;
@@ -1300,7 +1320,7 @@ function addEntry(){
   if(editingId){
     const idx = entries.findIndex(e=>e.id===editingId);
     if(idx>-1){
-      entries[idx] = { ...entries[idx], type:selectedType, date, duration:Number(duration), distance:finalDistance, unit:finalUnit, notes, lengths, lengthDistance, lengthUnit, stroke, elevation, elevationUnit };
+      entries[idx] = { ...entries[idx], type:selectedType, date, duration:duration, distance:finalDistance, unit:finalUnit, notes, lengths, lengthDistance, lengthUnit, stroke, elevation, elevationUnit };
     }
     editingId = null;
     $('submitBtn').textContent = 'LOG IT';
@@ -1309,7 +1329,7 @@ function addEntry(){
   } else {
     entries.push({
       id: Date.now().toString(36) + Math.random().toString(36).slice(2,7),
-      type: selectedType, date, duration:Number(duration), distance:finalDistance, unit:finalUnit, notes,
+      type: selectedType, date, duration:duration, distance:finalDistance, unit:finalUnit, notes,
       lengths, lengthDistance, lengthUnit, stroke, elevation, elevationUnit,
       createdAt: Date.now()
     });
